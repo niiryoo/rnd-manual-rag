@@ -8,6 +8,7 @@ from typing import Any, Literal
 
 from rnd_rag.agents import graph, nodes
 from rnd_rag.agents.llm import SONNET, call_json, call_tools
+from rnd_rag.agents.nodes import ANSWER_TOKENS
 from rnd_rag.agents.state import AgentState, Complexity, Usage
 from rnd_rag.mcp.formatting import format_section
 from rnd_rag.search import SearchResult
@@ -16,7 +17,6 @@ Method = Literal["A", "B", "C", "D", "D-simple", "D-complex"]
 METHODS: tuple[Method, ...] = ("A", "B", "C", "D", "D-simple", "D-complex")
 
 MAX_TOOL_ROUNDS = 6  # C 도구 호출 왕복 상한
-ANSWER_TOKENS = 2000  # 그래프 답변 노드와 같은 값
 
 
 @dataclass(frozen=True)

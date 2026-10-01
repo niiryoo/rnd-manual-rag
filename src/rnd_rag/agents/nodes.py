@@ -15,6 +15,7 @@ COMPLEX_LIMIT = 3  # 하위 질문마다 가져오므로 늘리면 컨텍스트�
 MAX_SUBQUERIES = 4
 
 SNIPPET_CHARS = 2500  # 정답의 96% 가 이 안에 들어온다
+ANSWER_TOKENS = 8000  # Sonnet 사고 토큰 포함. 2000 에서 잘린 사례 있음
 
 
 @lru_cache(maxsize=1)
@@ -180,7 +181,7 @@ ANSWER_PROMPT = """아래 매뉴얼 발췌만 근거로 질문에 답해라.
 def _answer(state: AgentState, model: str, label: str) -> AgentState:
     data, usage = call_json(
         ANSWER_PROMPT.format(query=state["query"], evidence=evidence(state["retrieved"])),
-        ANSWER_SCHEMA, model=model, max_tokens=2000,
+        ANSWER_SCHEMA, model=model, max_tokens=ANSWER_TOKENS,
     )
     return {
         "answer": data["answer"],
