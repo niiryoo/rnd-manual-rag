@@ -2,6 +2,7 @@
 
     python eval/pilot.py                       # 30개 x 6방식
     python eval/pilot.py --ids q01,q19,q23     # 일부만
+    python eval/pilot.py --resume eval/runs/pilot-xxx.jsonl   # 성공분은 옮기고 나머지만 실행
 """
 
 from __future__ import annotations
@@ -47,7 +48,14 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--ids", help="쉼표로 구분한 질의 id. 없으면 전부")
     parser.add_argument("--methods", default=",".join(METHODS))
+    parser.add_argument("--resume", type=Path)
     args = parser.parse_args()
+
+    done: list[dict] = []
+    if args.resume:
+        lines = args.resume.read_text(encoding="utf-8").splitlines()
+        done = [r for r in map(json.loads, lines) if "error" not in r]
+    skip = {(r["id"], r["method"]) for r in done}
 
     queries = [json.loads(line) for line in GROUND_TRUTH.read_text(encoding="utf-8").splitlines()
                if line.strip()]
@@ -65,8 +73,15 @@ def main() -> None:
     degraded = 0
 
     with out.open("w", encoding="utf-8") as f:
+        for r in done:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+            spent[r["method"]] += r["cost_usd"]
+        if done:
+            print(f"{args.resume} 에서 성공 {len(done)}건을 옮김", flush=True)
         for q in queries:
             for method in methods:
+                if (q["id"], method) in skip:
+                    continue
                 record = {"id": q["id"], "type": q["type"], "method": method}
                 fallback.count = 0
                 start = time.perf_counter()
