@@ -14,6 +14,7 @@ from rnd_rag.paths import ROOT
 
 HAIKU = "claude-haiku-4-5-20251001"
 SONNET = "claude-sonnet-5"
+OPUS = "claude-opus-5-5"  # 채점 전용. 평가 대상과 다른 모델
 
 TIMEOUT = 60.0
 MAX_RETRIES = 3  # 529 가 측정 실패로 남지 않게

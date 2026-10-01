@@ -44,3 +44,6 @@ data/processed/*.jsonl
 
 # --- 배포 꾸러미 (API 키 포함될 수 있음) ---
 dist/
+
+# --- 파일럿 실행·채점 결과 (최종본만 골라 커밋) ---
+eval/runs/
