@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import time
 from collections import defaultdict
 from datetime import datetime
@@ -20,6 +21,18 @@ GROUND_TRUTH = Path(__file__).with_name("ground_truth.jsonl")
 RUNS_DIR = Path(__file__).with_name("runs")
 
 PRICE_PER_MTOK = {HAIKU: (1.0, 5.0), SONNET: (2.0, 10.0)}  # USD 입력/출력, 2026-09 기준
+
+
+class FallbackCounter(logging.Handler):
+    """질의 임베딩이 실패해 키워드로만 검색한 횟수."""
+
+    def __init__(self) -> None:
+        super().__init__(logging.WARNING)
+        self.count = 0
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if record.getMessage().startswith("질의 임베딩 실패"):
+            self.count += 1
 
 
 def cost(tokens: dict[str, dict[str, int]]) -> float:
@@ -47,11 +60,15 @@ def main() -> None:
     out = RUNS_DIR / f"pilot-{datetime.now():%Y%m%d-%H%M%S}.jsonl"
     spent: dict[str, float] = defaultdict(float)
     errors: dict[str, int] = defaultdict(int)
+    fallback = FallbackCounter()
+    logging.getLogger("rnd_rag.search.service").addHandler(fallback)
+    degraded = 0
 
     with out.open("w", encoding="utf-8") as f:
         for q in queries:
             for method in methods:
                 record = {"id": q["id"], "type": q["type"], "method": method}
+                fallback.count = 0
                 start = time.perf_counter()
                 try:
                     r = run(method, q["query"])
@@ -73,15 +90,20 @@ def main() -> None:
                     record["error"] = f"{type(e).__name__}: {e}"
                     errors[method] += 1
                 record["seconds"] = round(time.perf_counter() - start, 1)
+                record["fallback_searches"] = fallback.count  # 0 이 아니면 재실행 대상
+                degraded += fallback.count > 0
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
                 f.flush()
                 status = record.get("error") or " → ".join(record["trace"])
-                print(f"{q['id']} {method:<9} {record['seconds']:>5}s  {status}")
+                if fallback.count:
+                    status += f"  [키워드 폴백 {fallback.count}회]"
+                print(f"{q['id']} {method:<9} {record['seconds']:>5}s  {status}", flush=True)
 
     print(f"\n{out}")
     for method in methods:
         print(f"  {method:<9} ${spent[method]:.4f}  오류 {errors[method]}건")
     print(f"  합계      ${sum(spent.values()):.4f}")
+    print(f"  키워드 폴백이 섞인 실행 {degraded}건")
 
 
 if __name__ == "__main__":
