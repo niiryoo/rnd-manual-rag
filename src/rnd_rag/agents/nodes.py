@@ -44,7 +44,7 @@ def _window(result: SearchResult, limit: int) -> tuple[str, bool]:
             grew = True
         if lo > 0 and used + len(chunks[lo - 1].text) <= limit:
             lo -= 1
-            used += len(chunks[lo - 1].text)
+            used += len(chunks[lo].text)
             grew = True
         if not grew:
             break
