@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import operator
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from typing import Annotated, Literal, TypedDict
 
 from rnd_rag.search.service import SearchResult
@@ -16,19 +17,40 @@ MAX_EVIDENCE = 6  # 발췌에 실을 섹션 수. 늘리면 하나당 예산이 �
 
 
 @dataclass(frozen=True)
-class Usage:
+class Tokens:
     """응답이 준 토큰 수. 추정값을 섞지 않는다."""
 
     input_tokens: int = 0
     output_tokens: int = 0
     calls: int = 0
 
-    def __add__(self, other: Usage) -> Usage:
-        return Usage(
+    def __add__(self, other: Tokens) -> Tokens:
+        return Tokens(
             self.input_tokens + other.input_tokens,
             self.output_tokens + other.output_tokens,
             self.calls + other.calls,
         )
+
+
+@dataclass(frozen=True)
+class Usage:
+    """모델별로 따로 센다. 단가가 다르다."""
+
+    by_model: Mapping[str, Tokens] = field(default_factory=dict)
+
+    @classmethod
+    def of(cls, model: str, input_tokens: int, output_tokens: int) -> Usage:
+        return cls({model: Tokens(input_tokens, output_tokens, 1)})
+
+    def __add__(self, other: Usage) -> Usage:
+        merged = dict(self.by_model)
+        for model, tokens in other.by_model.items():
+            merged[model] = merged.get(model, Tokens()) + tokens
+        return Usage(merged)
+
+    @property
+    def total(self) -> Tokens:
+        return sum(self.by_model.values(), Tokens())
 
 
 def merge_evidence(old: tuple[SearchResult, ...],

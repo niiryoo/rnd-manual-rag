@@ -36,8 +36,8 @@ class Reply:
     usage: Usage
 
 
-def _usage(response: anthropic.types.Message) -> Usage:
-    return Usage(response.usage.input_tokens, response.usage.output_tokens, 1)
+def _usage(model: str, response: anthropic.types.Message) -> Usage:
+    return Usage.of(model, response.usage.input_tokens, response.usage.output_tokens)
 
 
 def _strict(node: Any) -> Any:
@@ -67,7 +67,7 @@ def call_text(prompt: str, model: str = HAIKU, system: str = "",
               max_tokens: int = 1024) -> Reply:
     response = _create(model, system, prompt, max_tokens)
     text = "".join(b.text for b in response.content if b.type == "text")
-    return Reply(text.strip(), _usage(response))
+    return Reply(text.strip(), _usage(model, response))
 
 
 def call_json(prompt: str, schema: dict[str, Any], model: str = HAIKU,
@@ -80,4 +80,21 @@ def call_json(prompt: str, schema: dict[str, Any], model: str = HAIKU,
     if response.stop_reason == "max_tokens":
         raise RuntimeError(f"{model} 응답이 max_tokens={max_tokens} 에서 잘렸다")
     text = "".join(b.text for b in response.content if b.type == "text")
-    return json.loads(text), _usage(response)
+    return json.loads(text), _usage(model, response)
+
+
+def call_tools(messages: list[dict[str, Any]], tools: list[dict[str, Any]],
+               schema: dict[str, Any], model: str = SONNET, max_tokens: int = 1024,
+               allow_tools: bool = True) -> tuple[anthropic.types.Message, Usage]:
+    """도구 호출 왕복 한 번. 도구를 안 부르고 끝내면 schema 형식으로 답한다."""
+    response = client().messages.create(
+        model=model,
+        max_tokens=max_tokens,
+        messages=messages,
+        tools=tools,
+        tool_choice={"type": "auto" if allow_tools else "none"},
+        output_config={"format": {"type": "json_schema", "schema": _strict(schema)}},
+    )
+    if response.stop_reason == "max_tokens":
+        raise RuntimeError(f"{model} 응답이 max_tokens={max_tokens} 에서 잘렸다")
+    return response, _usage(model, response)

@@ -52,7 +52,7 @@ def _window(result: SearchResult, limit: int) -> tuple[str, bool]:
     return body, (lo > 0 or hi + 1 < len(chunks))
 
 
-def _evidence(results: tuple[SearchResult, ...]) -> str:
+def evidence(results: tuple[SearchResult, ...]) -> str:
     if not results:
         return "(검색 결과 없음)"
     blocks = []
@@ -179,7 +179,7 @@ ANSWER_PROMPT = """아래 매뉴얼 발췌만 근거로 질문에 답해라.
 
 def _answer(state: AgentState, model: str, label: str) -> AgentState:
     data, usage = call_json(
-        ANSWER_PROMPT.format(query=state["query"], evidence=_evidence(state["retrieved"])),
+        ANSWER_PROMPT.format(query=state["query"], evidence=evidence(state["retrieved"])),
         ANSWER_SCHEMA, model=model, max_tokens=2000,
     )
     return {
@@ -250,7 +250,7 @@ def verify(state: AgentState) -> AgentState:
         VERIFY_PROMPT.format(
             query=state["query"],
             answer=state.get("answer", ""),
-            evidence=_evidence(state["retrieved"]),
+            evidence=evidence(state["retrieved"]),
         ),
         VERIFY_SCHEMA, model=HAIKU, max_tokens=300,
     )
@@ -261,6 +261,11 @@ def verify(state: AgentState) -> AgentState:
         "usage": usage,
         "trace": ("검증",),
     }
+
+
+def route_start(state: AgentState) -> str:
+    # 판정을 받고 시작하면 분류를 건너뛴다
+    return route_complexity(state) if "complexity" in state else "classify"
 
 
 def route_complexity(state: AgentState) -> str:

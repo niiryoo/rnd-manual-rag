@@ -7,7 +7,7 @@ from functools import lru_cache
 from langgraph.graph import END, START, StateGraph
 
 from rnd_rag.agents import nodes
-from rnd_rag.agents.state import AgentState
+from rnd_rag.agents.state import AgentState, Complexity
 
 
 @lru_cache(maxsize=1)
@@ -21,7 +21,8 @@ def build():
     graph.add_node("synthesize", nodes.synthesize)
     graph.add_node("verify", nodes.verify)
 
-    graph.add_edge(START, "classify")
+    graph.add_conditional_edges(START, nodes.route_start,
+                                {"classify": "classify", "plan": "plan", "retrieve": "retrieve"})
     graph.add_conditional_edges("classify", nodes.route_complexity,
                                 {"plan": "plan", "retrieve": "retrieve"})
     graph.add_edge("plan", "retrieve")
@@ -37,5 +38,8 @@ def build():
     return graph.compile()
 
 
-def run(query: str) -> AgentState:
-    return build().invoke({"query": query})
+def run(query: str, complexity: Complexity | None = None) -> AgentState:
+    state: AgentState = {"query": query}
+    if complexity:
+        state["complexity"] = complexity
+    return build().invoke(state)
