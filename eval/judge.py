@@ -25,6 +25,7 @@ from rnd_rag.search import SearchResult
 
 GROUND_TRUTH = Path(__file__).with_name("ground_truth.jsonl")
 VERDICTS = ("정답", "회피", "오답")
+PROMPT_VERSION = 2  # 결과 파일명에 붙음. 기준 수정은 v2 한 번만
 PRICE_PER_MTOK = (4.0, 20.0)  # Opus 5.5 입력/출력 USD. 배치는 절반
 POLL_SECONDS = 30
 DIRECT_WORKERS = 6
@@ -41,19 +42,23 @@ SCHEMA = {
 
 PROMPT = """아래 매뉴얼 근거를 기준으로 답변을 판정해라.
 
-정답 - 질문이 요구한 핵심 사실(금액·기간·비율·조건)이 모두 근거와 일치한다.
+정답 - 질문이 요구한 사항(금액·기간·비율·조건)을 근거와 일치하게 모두 답했다.
        표현이 달라도 뜻이 같으면 일치로 본다. 예: "100분의 150" = "150%"
-오답 - 핵심 사실 중 하나라도 근거와 다르게 말했다.
-회피 - 근거와 다른 말은 없지만, 질문이 요구한 핵심 사실을 다 제시하지 않았다.
-       모른다고 답한 경우, 일반론만 말한 경우, 둘 중 하나만 답한 경우가 여기 해당한다.
+오답 - 질문이 물은 사항에 대해 근거와 어긋나는 말을 했다.
+       핵심을 맞혔더라도 같은 사항에 대해 근거와 어긋나는 말을 덧붙였으면 오답이다.
+회피 - 근거와 어긋나는 말은 없지만, 질문이 요구한 사항을 다 제시하지 않았다.
+       모른다고 답한 경우, 근거에 없다고 답한 경우, 일반론만 말한 경우,
+       둘 중 하나만 답한 경우가 여기 해당한다.
 
-판정 순서: 근거와 다른 내용이 있으면 오답이다. 없으면 빠진 것이 있는지 본다.
+판정 순서: 근거와 어긋나는 내용이 있으면 오답이다. 없으면 빠진 것이 있는지 본다.
 근거로 확인할 수 없는 추가 설명은 판정에 쓰지 않는다.
+참고 문구는 근거에서 정답 위치를 찾는 단서다. 질문이 넓으면 참고 문구의 내용을
+빠짐없이 말하지 않았더라도, 질문이 요구한 범위를 근거대로 답했으면 정답이다.
 
 # 질문
 {query}
 
-# 핵심 사실
+# 참고 문구
 {facts}
 
 # 매뉴얼 근거
@@ -64,7 +69,7 @@ PROMPT = """아래 매뉴얼 근거를 기준으로 답변을 판정해라.
 
 
 def reference(case: dict) -> str:
-    """정답 섹션마다 must_contain 이 가장 많이 든 청크를 중심으로 발췌한다. 사람 확인 화면도 이걸 쓴다."""
+    """정답 섹션마다 must_contain 이 가장 많이 든 청크 주변을 발췌한다."""
     repo = nodes.service().repo
     results = []
     for section_id in case["answer_sections"]:
@@ -151,7 +156,7 @@ def main() -> None:
     lines = GROUND_TRUTH.read_text(encoding="utf-8").splitlines()
     cases = {c["id"]: c for c in (json.loads(line) for line in lines if line.strip())}
     records = [json.loads(line) for line in args.run.read_text(encoding="utf-8").splitlines()]
-    records = [r for r in records if "error" not in r]  # 실행 실패 건은 채점 대상이 아니다
+    records = [r for r in records if "error" not in r]  # 실행 실패 건 제외
 
     params = build_params(records, cases, args.effort)
     mode = "direct" if args.direct else "batch"
@@ -161,7 +166,7 @@ def main() -> None:
     else:
         spent = apply(records, run_batch(params, args.batch_id), discount=0.5)
 
-    out = args.run.with_name(f"{args.run.stem}.judged-{args.effort}.jsonl")
+    out = args.run.with_name(f"{args.run.stem}.judged-{args.effort}-v{PROMPT_VERSION}.jsonl")
     out.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in records),
                    encoding="utf-8")
 
